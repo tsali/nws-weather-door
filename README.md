@@ -255,7 +255,7 @@ nws-weather-door/
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+Free for non-commercial use. May not be sold or bundled in paid software without permission. See [LICENSE](LICENSE) for full terms. For commercial licensing, contact spectrumnet@cultofjames.org.
 
 ## Credits
 

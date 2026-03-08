@@ -1,21 +1,36 @@
-MIT License
+NWS Weather Door — Non-Commercial License
 
-Copyright (c) 2026 RAI
+Copyright (c) 2026 RAI (spectrumnet@cultofjames.org)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+of this software and associated documentation files (the "Software"), to use,
+copy, modify, and distribute the Software, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. NON-COMMERCIAL USE: The Software may be freely used, modified, and
+   distributed for personal, educational, hobbyist, and non-commercial
+   purposes. Running the Software on a BBS (whether free or donation-supported)
+   is expressly permitted.
+
+2. NO SALE OR COMMERCIAL BUNDLING: The Software, or any derivative work based
+   on it, may NOT be sold, licensed for a fee, or bundled as part of any
+   product or service that is sold or offered for a fee, without prior written
+   permission from the copyright holder. This includes but is not limited to:
+   - Selling the Software standalone
+   - Including it in a paid software package or distribution
+   - Offering it as part of a paid hosting, SaaS, or managed service
+   - Bundling it with hardware or commercial BBS packages sold for profit
+
+3. ATTRIBUTION: The above copyright notice and this permission notice shall
+   be included in all copies or substantial portions of the Software.
+   Modifications must be clearly marked as such.
+
+4. COMMERCIAL LICENSING: For commercial use, resale, or bundling rights,
+   contact the copyright holder at spectrumnet@cultofjames.org to negotiate
+   a commercial license and compensation terms.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

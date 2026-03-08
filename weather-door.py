@@ -12,7 +12,7 @@ Configuration: Set environment variables or edit the LOCATIONS dict below.
 See README.md for setup instructions.
 
 Version: 1.0
-License: MIT
+License: Non-Commercial (see LICENSE file)
 """
 
 import io
