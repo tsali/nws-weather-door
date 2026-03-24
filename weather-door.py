@@ -758,70 +758,66 @@ def display_alerts(alerts):
 
 
 def display_temp_trend(hourly_data):
-    """Display 24-hour temperature trend as a horizontal bar graph."""
+    """Display 24-hour temperature trend, sampled to fit a BBS screen."""
     if not hourly_data or 'error' in hourly_data[0]:
         outln(box_top('Temperature Trend'))
         outln(box_line(f'{RED}Error fetching hourly data{RST}'))
         outln(box_bottom())
         return
 
+    # Sample every 2 hours to fit ~12 rows on screen
+    sampled = hourly_data[::2]
+
     outln(box_top('24-Hour Temperature Trend'))
-    outln(box_line(f'  {DIM}Hour  Temp  {"":40}  Conditions{RST}'))
+    outln(box_line(f'  {DIM}Time  Temp {"":<38} Conditions{RST}'))
     outln(box_divider())
 
-    temps = [h['temp'] for h in hourly_data]
+    temps = [h['temp'] for h in sampled]
     t_min = min(temps)
     t_max = max(temps)
     t_range = t_max - t_min if t_max != t_min else 1
-    bar_max = 35
+    bar_max = 38
 
-    for h in hourly_data:
+    for h in sampled:
         hour = h['hour']
         temp = h['temp']
-        short = h['short'][:18]
+        short = h['short'][:14]
 
-        # 12-hour label
         suffix = 'a' if hour < 12 else 'p'
         h12 = hour % 12 or 12
         label = f'{h12:>2}{suffix}'
 
-        # Bar proportional to temp within range
         bar_len = max(1, int((temp - t_min) / t_range * bar_max))
         tc = temp_color(temp)
 
-        # Night hours get dimmer background
-        bg = ''
-        if h.get('is_night'):
-            bg = DIM
-
         bar = f'{tc}{BLK_FULL * bar_len}{RST}{DIM}{"." * (bar_max - bar_len)}{RST}'
-        outln(box_line(f'  {bg}{label}{RST} {tc}{temp:>4}F{RST} {bar} {DIM}{short}{RST}'))
+        outln(box_line(f'  {label} {tc}{temp:>3}F{RST} {bar} {DIM}{short}{RST}'))
 
-    # Summary line
     outln(box_divider())
-    avg_temp = sum(temps) // len(temps)
-    tc_lo = temp_color(t_min)
-    tc_hi = temp_color(t_max)
-    tc_av = temp_color(avg_temp)
-    outln(box_line(f'  {DIM}Low:{RST} {tc_lo}{t_min}F{RST}  '
-                   f'{DIM}High:{RST} {tc_hi}{t_max}F{RST}  '
-                   f'{DIM}Avg:{RST} {tc_av}{avg_temp}F{RST}  '
-                   f'{DIM}Range:{RST} {WHITE}{t_max - t_min}F{RST}'))
+    all_temps = [h['temp'] for h in hourly_data]
+    avg_temp = sum(all_temps) // len(all_temps)
+    lo = min(all_temps)
+    hi = max(all_temps)
+    outln(box_line(f'  {DIM}Lo:{RST} {temp_color(lo)}{lo}F{RST}  '
+                   f'{DIM}Hi:{RST} {temp_color(hi)}{hi}F{RST}  '
+                   f'{DIM}Avg:{RST} {temp_color(avg_temp)}{avg_temp}F{RST}  '
+                   f'{DIM}Range:{RST} {WHITE}{hi - lo}F{RST}'))
     outln(box_bottom())
 
 
 def display_precip_forecast(hourly_data, daily_precip):
-    """Display precipitation probability trend + daily accumulation."""
+    """Display precipitation probability + daily accumulation, compact layout."""
     outln(box_top('Precipitation Forecast'))
 
-    # --- Hourly probability bars (next 24 hours) ---
+    # --- Hourly probability (sampled every 2h to fit screen) ---
     if hourly_data and 'error' not in hourly_data[0]:
-        outln(box_line(f'  {BRIGHT_WHITE}Hourly Chance of Rain (next 24h){RST}'))
+        outln(box_line(f'  {BRIGHT_WHITE}Rain Chance (next 24h){RST}'))
         outln(box_divider())
-        outln(box_line(f'  {DIM}Hour  Prob  {"":40}{RST}'))
 
-        bar_max = 40
-        for h in hourly_data:
+        sampled = hourly_data[::2]
+        bar_max = 42
+
+        for h in sampled:
             hour = h['hour']
             pct = h['precip_pct']
 
@@ -831,7 +827,6 @@ def display_precip_forecast(hourly_data, daily_precip):
 
             bar_len = max(0, int(pct / 100 * bar_max))
 
-            # Color by probability
             if pct >= 70:
                 pc = BRIGHT_BLUE
             elif pct >= 40:
@@ -842,25 +837,23 @@ def display_precip_forecast(hourly_data, daily_precip):
                 pc = DIM
 
             bar = f'{pc}{BLK_FULL * bar_len}{RST}{DIM}{"." * (bar_max - bar_len)}{RST}'
-            outln(box_line(f'  {label} {pc}{pct:>4}%{RST} {bar}'))
+            outln(box_line(f'  {label} {pc}{pct:>3}%{RST} {bar}'))
 
-    # --- Daily accumulation bars (7 days) ---
-    if daily_precip and not isinstance(daily_precip[0], dict) or (daily_precip and 'error' not in daily_precip[0]):
+    # --- Daily accumulation (7 days, compact) ---
+    if daily_precip and (not isinstance(daily_precip[0], dict) or 'error' not in daily_precip[0]):
         outln(box_divider())
-        outln(box_line(f'  {BRIGHT_WHITE}Expected Rainfall (next 7 days){RST}'))
-        outln(box_divider())
+        outln(box_line(f'  {BRIGHT_WHITE}Expected Rainfall (7 days){RST}'))
 
         max_rain = max((d['total_in'] for d in daily_precip if 'total_in' in d), default=0.1)
         if max_rain == 0:
             max_rain = 0.1
-        bar_max = 40
+        bar_max = 42
 
         for d in daily_precip:
             if 'error' in d:
                 continue
             rain = d.get('total_in', 0)
             name = d.get('day_name', '?')
-
             bar_len = max(0, int(rain / max_rain * bar_max)) if rain > 0 else 0
 
             if rain >= 1.0:
@@ -873,31 +866,33 @@ def display_precip_forecast(hourly_data, daily_precip):
                 rc = DIM
 
             bar = f'{rc}{BLK_FULL * bar_len}{RST}{DIM}{"." * (bar_max - bar_len)}{RST}' if bar_len > 0 else f'{DIM}{"." * bar_max}{RST}'
-            rain_str = f'{rain:.2f}"' if rain >= 0.01 else 'trace'
-            outln(box_line(f'  {WHITE}{name:<5}{RST} {rc}{rain_str:>7}{RST} {bar}'))
+            rain_str = f'{rain:.2f}"' if rain >= 0.01 else '  -- '
+            outln(box_line(f'  {WHITE}{name:<4}{RST}{rc}{rain_str:>6}{RST} {bar}'))
 
     outln(box_bottom())
 
 
 def display_wind_trend(hourly_data):
-    """Display 24-hour wind speed trend as a horizontal bar graph."""
+    """Display 24-hour wind speed trend, sampled to fit a BBS screen."""
     if not hourly_data or 'error' in hourly_data[0]:
         outln(box_top('Wind Trend'))
         outln(box_line(f'{RED}Error fetching hourly data{RST}'))
         outln(box_bottom())
         return
 
+    sampled = hourly_data[::2]
+
     outln(box_top('24-Hour Wind Forecast'))
-    outln(box_line(f'  {DIM}Hour  Speed  Dir  {"":32}{RST}'))
+    outln(box_line(f'  {DIM}Time  Speed Dir {"":<38}{RST}'))
     outln(box_divider())
 
-    winds = [h['wind_mph'] for h in hourly_data]
+    winds = [h['wind_mph'] for h in sampled]
     w_max = max(winds) if winds else 1
     if w_max == 0:
         w_max = 1
-    bar_max = 35
+    bar_max = 38
 
-    for h in hourly_data:
+    for h in sampled:
         hour = h['hour']
         wind = h['wind_mph']
         wind_dir = h['wind_dir']
@@ -908,7 +903,6 @@ def display_wind_trend(hourly_data):
 
         bar_len = max(0, int(wind / w_max * bar_max))
 
-        # Color by wind speed
         if wind >= 30:
             wc = BRIGHT_RED
         elif wind >= 20:
@@ -921,13 +915,13 @@ def display_wind_trend(hourly_data):
             wc = DIM
 
         bar = f'{wc}{BLK_FULL * bar_len}{RST}{DIM}{"." * (bar_max - bar_len)}{RST}'
-        outln(box_line(f'  {label} {wc}{wind:>3}mph{RST} {DIM}{wind_dir:>3}{RST} {bar}'))
+        outln(box_line(f'  {label} {wc}{wind:>2}mph{RST} {DIM}{wind_dir:>3}{RST} {bar}'))
 
-    # Summary
     outln(box_divider())
-    avg_w = sum(winds) // len(winds) if winds else 0
-    outln(box_line(f'  {DIM}Low:{RST} {WHITE}{min(winds)}mph{RST}  '
-                   f'{DIM}High:{RST} {BRIGHT_YELLOW}{max(winds)}mph{RST}  '
+    all_winds = [h['wind_mph'] for h in hourly_data]
+    avg_w = sum(all_winds) // len(all_winds) if all_winds else 0
+    outln(box_line(f'  {DIM}Lo:{RST} {WHITE}{min(all_winds)}mph{RST}  '
+                   f'{DIM}Hi:{RST} {BRIGHT_YELLOW}{max(all_winds)}mph{RST}  '
                    f'{DIM}Avg:{RST} {WHITE}{avg_w}mph{RST}'))
     outln(box_bottom())
 
@@ -1094,33 +1088,13 @@ def display_alerts_view():
         display_alerts(alerts)
 
 
-def display_radar():
-    """Show Doppler radar via chafa rendering of radar-fetch.py output."""
+def render_frame_to_ansi(img_path):
+    """Render a PNG frame to ANSI bytes via chafa + iconv."""
     import subprocess
-    outln()
-    outln(f'{DIM}  Fetching Doppler radar...{RST}')
-    outln()
-
-    # Generate the radar image
-    radar_img = '/tmp/bbs-radar-composite.png'
-    try:
-        result = subprocess.run(
-            ['/usr/bin/python3', '/mystic/doors/radar/radar-fetch.py', radar_img],
-            capture_output=True, timeout=30
-        )
-        if result.returncode != 0:
-            err = result.stderr.decode(errors='replace').strip()
-            outln(f'{RED}  Error generating radar image: {err}{RST}')
-            return
-    except Exception as e:
-        outln(f'{RED}  Error: {e}{RST}')
-        return
-
-    # Render with chafa + iconv for CP437 compatibility
     try:
         chafa = subprocess.Popen(
-            ['chafa', '--size=80x24', '--colors=256', '-f', 'symbols',
-             '--symbols=half+space', '--work=9', radar_img],
+            ['chafa', '--size=80x22', '--colors=256', '-f', 'symbols',
+             '--symbols=half+space', '--work=9', img_path],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
         )
         iconv = subprocess.Popen(
@@ -1129,17 +1103,97 @@ def display_radar():
         )
         chafa.stdout.close()
         output = iconv.communicate(timeout=10)[0]
-        # Write raw bytes directly to stdout buffer
-        sys.stdout.flush()
-        sys.stdout.buffer.write(output)
-        sys.stdout.buffer.flush()
+        return output
+    except Exception:
+        return None
+
+
+def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
+    """Show animated Doppler radar via chafa rendering of radar-fetch.py frames."""
+    import subprocess
+    outln()
+    outln(f'{DIM}  Fetching Doppler radar frames (this may take a moment)...{RST}')
+
+    frame_dir = '/tmp/bbs-radar-frames'
+    num_frames = 4  # ~40 minutes of radar history (10 min intervals)
+
+    # Generate frames
+    try:
+        result = subprocess.run(
+            ['/usr/bin/python3', '/mystic/doors/radar/radar-fetch.py',
+             '--frames', str(num_frames),
+             '--lat', str(area_lat), '--lon', str(area_lon),
+             frame_dir],
+            capture_output=True, timeout=90
+        )
+        if result.returncode != 0:
+            err = result.stderr.decode(errors='replace').strip()
+            outln(f'{RED}  Error generating radar: {err}{RST}')
+            return
     except Exception as e:
-        outln(f'{RED}  Error rendering radar: {e}{RST}')
+        outln(f'{RED}  Error: {e}{RST}')
         return
 
-    outln()
-    outln(f'{DIM}  Doppler Radar - Pensacola Area{RST}')
-    outln(f'{DIM}  Source: RainViewer / OpenStreetMap{RST}')
+    # Parse frame metadata from stdout
+    frame_info = []
+    for line in result.stdout.decode().strip().split('\n'):
+        if ':' in line:
+            parts = line.split(':', 2)
+            if len(parts) == 3:
+                idx, ts, path = parts
+                frame_info.append((int(ts), path))
+
+    if not frame_info:
+        outln(f'{RED}  No radar frames available.{RST}')
+        return
+
+    # Pre-render all frames to ANSI
+    outln(f'{DIM}  Rendering {len(frame_info)} frames...{RST}')
+    ansi_frames = []
+    for ts, path in frame_info:
+        frame_data = render_frame_to_ansi(path)
+        if frame_data:
+            # Format timestamp
+            from datetime import datetime
+            dt = datetime.fromtimestamp(ts)
+            time_str = dt.strftime('%I:%M %p')
+            ansi_frames.append((time_str, frame_data))
+
+    if not ansi_frames:
+        outln(f'{RED}  Failed to render radar frames.{RST}')
+        return
+
+    # Animate: loop through frames, clear screen between each
+    CLEAR = '\033[2J\033[H'  # clear screen + home cursor
+    loops = 3  # play the animation 3 times
+
+    for loop in range(loops):
+        for i, (time_str, frame_data) in enumerate(ansi_frames):
+            # Clear screen and draw frame
+            sys.stdout.flush()
+            sys.stdout.buffer.write(CLEAR.encode())
+            sys.stdout.buffer.write(frame_data)
+            sys.stdout.buffer.flush()
+            # Status bar below the radar
+            outln(f'{BRIGHT_CYAN}  Doppler Radar{RST} {DIM}-{RST} {BRIGHT_WHITE}{area_name}{RST} '
+                  f'{DIM}|{RST} {BRIGHT_YELLOW}{time_str}{RST} '
+                  f'{DIM}| Frame {i+1}/{len(ansi_frames)} | Loop {loop+1}/{loops}{RST}')
+            time.sleep(0.8)
+
+    # Show final frame with instructions
+    sys.stdout.flush()
+    sys.stdout.buffer.write(CLEAR.encode())
+    sys.stdout.buffer.write(ansi_frames[-1][1])
+    sys.stdout.buffer.flush()
+    outln(f'{BRIGHT_CYAN}  Doppler Radar{RST} {DIM}-{RST} {BRIGHT_WHITE}{area_name}{RST} '
+          f'{DIM}| Latest: {ansi_frames[-1][0]} | Source: RainViewer / OpenStreetMap{RST}')
+
+    # Cleanup frame files
+    import shutil
+    try:
+        shutil.rmtree(frame_dir, ignore_errors=True)
+    except Exception:
+        pass
 
 
 def pause():
@@ -1330,7 +1384,7 @@ def weather_loop(area_name, area_lat, area_lon):
             pause()
 
         elif choice == 'D':
-            display_radar()
+            display_radar(area_lat, area_lon, area_name)
             pause()
 
         elif choice == 'R':
