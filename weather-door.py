@@ -1176,8 +1176,11 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
         while True:
             time_str, frame_data = ansi_frames[frame_idx]
 
-            sys.stdout.buffer.write(CLEAR.encode())
-            sys.stdout.buffer.write(frame_data)
+            # Raw mode disables OPOST — \n won't become \r\n.
+            # Replace \n with \r\n so lines render correctly on BBS terminals.
+            fixed_data = frame_data.replace(b'\n', b'\r\n')
+            sys.stdout.buffer.write(CLEAR.encode().replace(b'\n', b'\r\n'))
+            sys.stdout.buffer.write(fixed_data)
             sys.stdout.buffer.flush()
             # Status after radar image
             status = (f'\r\n  \033[1;36mRadar\033[0m \033[1;37m{area_name}\033[0m'
