@@ -1164,65 +1164,62 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
         outln(f'{RED}  Failed to render radar frames.{RST}')
         return
 
-    # ANSI crosshair overlay: draw at character position using cursor movement
-    # ESC[row;colH positions cursor (1-based)
-    def draw_ansi_crosshair(row, col):
-        """Draw a bright yellow crosshair at character position using cursor addressing."""
-        yc = '\033[1;33m'  # bright yellow
-        rst = '\033[0m'
-        arm = 3  # arm length in characters
-        buf = b''
-        # Horizontal arms
-        for dx in range(-arm, arm + 1):
-            if dx == 0:
-                continue
-            c = col + dx
-            if 1 <= c <= 80:
-                buf += f'\033[{row};{c}H{yc}-{rst}'.encode('latin-1')
-        # Vertical arms
-        for dy in range(-arm, arm + 1):
-            if dy == 0:
-                continue
-            r = row + dy
-            if 1 <= r <= 22:
-                buf += f'\033[{r};{col}H{yc}|{rst}'.encode('latin-1')
-        # Center marker
-        buf += f'\033[{row};{col}H{yc}+{rst}'.encode('latin-1')
-        return buf
+    # Tiny crosshair: just a bright yellow "+" placed via cursor addressing
+    # No reset — preserves the background color from chafa underneath
+    def make_crosshair(row, col):
+        """Single bright yellow + character at position, no background change."""
+        if row < 1 or col < 1:
+            return b''
+        return f'\033[{row};{col}H\033[1;33m+'.encode('latin-1')
 
-    crosshair_bytes = draw_ansi_crosshair(cross_row, cross_col) if cross_row > 0 else b''
+    crosshair_bytes = make_crosshair(cross_row, cross_col)
 
-    # Animate: loop through frames, clear screen between each
-    CLEAR = '\033[2J\033[H'  # clear screen + home cursor
-    loops = 3
+    # Animate: loop until user presses a key
+    import select
+    import tty
+    import termios
 
-    for loop in range(loops):
-        for i, (time_str, frame_data) in enumerate(ansi_frames):
-            sys.stdout.flush()
+    CLEAR = '\033[2J\033[H'
+    HOME23 = '\033[23;1H'
+    RESET = '\033[0m'
+
+    # Set terminal to non-blocking raw mode so we can detect keypress
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+
+        frame_idx = 0
+        while True:
+            time_str, frame_data = ansi_frames[frame_idx]
+
             sys.stdout.buffer.write(CLEAR.encode())
             sys.stdout.buffer.write(frame_data)
-            # Overlay crosshair on top of the rendered frame
             if crosshair_bytes:
                 sys.stdout.buffer.write(crosshair_bytes)
+            # Status bar + quit hint on line 23-24
+            sys.stdout.buffer.write(f'{HOME23}{RESET}'.encode())
             sys.stdout.buffer.flush()
-            # Status bar on line 23
-            sys.stdout.buffer.write(f'\033[23;1H'.encode())
+            status = (f'  \033[1;36mDoppler Radar\033[0m - \033[1;37m{area_name}\033[0m'
+                      f' | \033[1;33m{time_str}\033[0m'
+                      f' | \033[2mFrame {frame_idx+1}/{len(ansi_frames)}'
+                      f' | Press any key to exit\033[0m\r\n')
+            sys.stdout.buffer.write(status.encode('latin-1'))
             sys.stdout.buffer.flush()
-            outln(f'{BRIGHT_CYAN}  Doppler Radar{RST} {DIM}-{RST} {BRIGHT_WHITE}{area_name}{RST} '
-                  f'{DIM}|{RST} {BRIGHT_YELLOW}{time_str}{RST} '
-                  f'{DIM}| Frame {i+1}/{len(ansi_frames)} | Loop {loop+1}/{loops}{RST}')
-            time.sleep(0.8)
 
-    # Show final frame
-    sys.stdout.flush()
-    sys.stdout.buffer.write(CLEAR.encode())
-    sys.stdout.buffer.write(ansi_frames[-1][1])
-    if crosshair_bytes:
-        sys.stdout.buffer.write(crosshair_bytes)
-    sys.stdout.buffer.write(f'\033[23;1H'.encode())
+            # Wait 0.8s or until keypress
+            ready, _, _ = select.select([fd], [], [], 0.8)
+            if ready:
+                os.read(fd, 1)  # consume the keypress
+                break
+
+            frame_idx = (frame_idx + 1) % len(ansi_frames)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+    # Clear and reset after radar
+    sys.stdout.buffer.write(f'\033[2J\033[H\033[0m'.encode())
     sys.stdout.buffer.flush()
-    outln(f'{BRIGHT_CYAN}  Doppler Radar{RST} {DIM}-{RST} {BRIGHT_WHITE}{area_name}{RST} '
-          f'{DIM}| Latest: {ansi_frames[-1][0]} | Source: RainViewer / OpenStreetMap{RST}')
 
     # Cleanup frame files
     import shutil
