@@ -1093,7 +1093,7 @@ def render_frame_to_ansi(img_path):
     import subprocess
     try:
         chafa = subprocess.Popen(
-            ['chafa', '--size=80x22', '--colors=256', '-f', 'symbols',
+            ['chafa', '--size=80x24', '--colors=256', '-f', 'symbols',
              '--symbols=half+space', '--work=9', img_path],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
         )
