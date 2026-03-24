@@ -809,12 +809,12 @@ def display_precip_forecast(hourly_data, daily_precip):
     """Display precipitation probability + daily accumulation, compact layout."""
     outln(box_top('Precipitation Forecast'))
 
-    # --- Hourly probability (sampled every 2h to fit screen) ---
+    # --- Hourly probability (sampled every 3h to fit on one screen with daily) ---
     if hourly_data and 'error' not in hourly_data[0]:
         outln(box_line(f'  {BRIGHT_WHITE}Rain Chance (next 24h){RST}'))
         outln(box_divider())
 
-        sampled = hourly_data[::2]
+        sampled = hourly_data[::3]  # every 3 hours = 8 rows
         bar_max = 42
 
         for h in sampled:
@@ -1134,13 +1134,15 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
         outln(f'{RED}  Error: {e}{RST}')
         return
 
-    # Parse frame metadata from stdout
+    # Parse frame metadata from stdout (format: idx:ts:path:row:col)
     frame_info = []
+    cross_row, cross_col = 0, 0
     for line in result.stdout.decode().strip().split('\n'):
         if ':' in line:
-            parts = line.split(':', 2)
-            if len(parts) == 3:
-                idx, ts, path = parts
+            parts = line.split(':')
+            if len(parts) >= 5:
+                idx, ts, path = parts[0], parts[1], parts[2]
+                cross_row, cross_col = int(parts[3]), int(parts[4])
                 frame_info.append((int(ts), path))
 
     if not frame_info:
@@ -1153,7 +1155,6 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
     for ts, path in frame_info:
         frame_data = render_frame_to_ansi(path)
         if frame_data:
-            # Format timestamp
             from datetime import datetime
             dt = datetime.fromtimestamp(ts)
             time_str = dt.strftime('%I:%M %p')
@@ -1163,27 +1164,62 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
         outln(f'{RED}  Failed to render radar frames.{RST}')
         return
 
+    # ANSI crosshair overlay: draw at character position using cursor movement
+    # ESC[row;colH positions cursor (1-based)
+    def draw_ansi_crosshair(row, col):
+        """Draw a bright yellow crosshair at character position using cursor addressing."""
+        yc = '\033[1;33m'  # bright yellow
+        rst = '\033[0m'
+        arm = 3  # arm length in characters
+        buf = b''
+        # Horizontal arms
+        for dx in range(-arm, arm + 1):
+            if dx == 0:
+                continue
+            c = col + dx
+            if 1 <= c <= 80:
+                buf += f'\033[{row};{c}H{yc}-{rst}'.encode('latin-1')
+        # Vertical arms
+        for dy in range(-arm, arm + 1):
+            if dy == 0:
+                continue
+            r = row + dy
+            if 1 <= r <= 22:
+                buf += f'\033[{r};{col}H{yc}|{rst}'.encode('latin-1')
+        # Center marker
+        buf += f'\033[{row};{col}H{yc}+{rst}'.encode('latin-1')
+        return buf
+
+    crosshair_bytes = draw_ansi_crosshair(cross_row, cross_col) if cross_row > 0 else b''
+
     # Animate: loop through frames, clear screen between each
     CLEAR = '\033[2J\033[H'  # clear screen + home cursor
-    loops = 3  # play the animation 3 times
+    loops = 3
 
     for loop in range(loops):
         for i, (time_str, frame_data) in enumerate(ansi_frames):
-            # Clear screen and draw frame
             sys.stdout.flush()
             sys.stdout.buffer.write(CLEAR.encode())
             sys.stdout.buffer.write(frame_data)
+            # Overlay crosshair on top of the rendered frame
+            if crosshair_bytes:
+                sys.stdout.buffer.write(crosshair_bytes)
             sys.stdout.buffer.flush()
-            # Status bar below the radar
+            # Status bar on line 23
+            sys.stdout.buffer.write(f'\033[23;1H'.encode())
+            sys.stdout.buffer.flush()
             outln(f'{BRIGHT_CYAN}  Doppler Radar{RST} {DIM}-{RST} {BRIGHT_WHITE}{area_name}{RST} '
                   f'{DIM}|{RST} {BRIGHT_YELLOW}{time_str}{RST} '
                   f'{DIM}| Frame {i+1}/{len(ansi_frames)} | Loop {loop+1}/{loops}{RST}')
             time.sleep(0.8)
 
-    # Show final frame with instructions
+    # Show final frame
     sys.stdout.flush()
     sys.stdout.buffer.write(CLEAR.encode())
     sys.stdout.buffer.write(ansi_frames[-1][1])
+    if crosshair_bytes:
+        sys.stdout.buffer.write(crosshair_bytes)
+    sys.stdout.buffer.write(f'\033[23;1H'.encode())
     sys.stdout.buffer.flush()
     outln(f'{BRIGHT_CYAN}  Doppler Radar{RST} {DIM}-{RST} {BRIGHT_WHITE}{area_name}{RST} '
           f'{DIM}| Latest: {ansi_frames[-1][0]} | Source: RainViewer / OpenStreetMap{RST}')

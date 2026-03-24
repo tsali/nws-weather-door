@@ -130,7 +130,7 @@ def draw_crosshair(img, target_lat, target_lon, cx, cy):
     return img
 
 
-def overlay_radar(base_img, radar_path, cx, cy, target_lat=None, target_lon=None):
+def overlay_radar(base_img, radar_path, cx, cy):
     """Overlay radar tiles onto a copy of the base map (parallel fetch)."""
     from concurrent.futures import ThreadPoolExecutor
     composite = base_img.copy()
@@ -166,12 +166,7 @@ def overlay_radar(base_img, radar_path, cx, cy, target_lat=None, target_lon=None
             tile = tile.convert('RGBA')
             composite.paste(tile, (px, py), tile)
 
-    result = composite.resize((OUT_W, OUT_H), Image.LANCZOS)
-
-    if target_lat is not None and target_lon is not None:
-        result = draw_crosshair(result, target_lat, target_lon, cx, cy)
-
-    return result
+    return composite.resize((OUT_W, OUT_H), Image.LANCZOS)
 
 
 def get_radar_timestamps():
@@ -206,6 +201,16 @@ def main():
         result.save(args.output if args.frames == 0 else os.path.join(args.output, 'frame_00.png'))
         return
 
+    # Calculate target position in ANSI character grid (80x22)
+    tpx, tpy = lat_lon_to_pixel(args.lat, args.lon, cx, cy)
+    composite_w = GRID * 256
+    composite_h = GRID * 256
+    char_col = int(tpx * 80 / composite_w)
+    char_row = int(tpy * 22 / composite_h)
+    # Clamp to valid range
+    char_col = max(1, min(79, char_col))
+    char_row = max(1, min(21, char_row))
+
     if args.frames > 0:
         # Multi-frame mode: generate N most recent frames
         frames = timestamps[-args.frames:]
@@ -214,16 +219,17 @@ def main():
         for i, entry in enumerate(frames):
             radar_path = entry['path']
             ts = entry['time']
-            composite = overlay_radar(base, radar_path, cx, cy, args.lat, args.lon)
+            composite = overlay_radar(base, radar_path, cx, cy)
             outfile = os.path.join(args.output, f'frame_{i:02d}.png')
             composite.save(outfile)
-            # Write timestamp metadata
-            print(f'{i}:{ts}:{outfile}')
+            # Output metadata including crosshair position
+            print(f'{i}:{ts}:{outfile}:{char_row}:{char_col}')
     else:
         # Single frame: latest only
         radar_path = timestamps[-1]['path']
-        composite = overlay_radar(base, radar_path, cx, cy, args.lat, args.lon)
+        composite = overlay_radar(base, radar_path, cx, cy)
         composite.save(args.output)
+        print(f'0:0:{args.output}:{char_row}:{char_col}')
 
 
 if __name__ == '__main__':
