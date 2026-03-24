@@ -1089,21 +1089,15 @@ def display_alerts_view():
 
 
 def render_frame_to_ansi(img_path):
-    """Render a PNG frame to ANSI bytes via chafa + iconv."""
+    """Render a PNG frame to ANSI bytes via chafa."""
     import subprocess
     try:
-        chafa = subprocess.Popen(
-            ['chafa', '--size=80x22', '--colors=256', '-f', 'symbols',
-             '--symbols=half+space', '--work=9', img_path],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        result = subprocess.run(
+            ['chafa', '--size=80x22', '--colors=240', '-f', 'symbols',
+             '--symbols=block+space', '--work=9', img_path],
+            capture_output=True, timeout=10
         )
-        iconv = subprocess.Popen(
-            ['iconv', '-f', 'UTF-8', '-t', 'CP437//TRANSLIT'],
-            stdin=chafa.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
-        )
-        chafa.stdout.close()
-        output = iconv.communicate(timeout=10)[0]
-        return output
+        return result.stdout if result.returncode == 0 else None
     except Exception:
         return None
 
@@ -1115,7 +1109,7 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
     outln(f'{DIM}  Fetching Doppler radar frames (this may take a moment)...{RST}')
 
     frame_dir = '/tmp/bbs-radar-frames'
-    num_frames = 4  # ~40 minutes of radar history (10 min intervals)
+    num_frames = 6  # ~60 minutes of radar history (10 min intervals)
 
     # Generate frames
     try:
@@ -1200,10 +1194,9 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
             # Status bar + quit hint on line 23-24
             sys.stdout.buffer.write(f'{HOME23}{RESET}'.encode())
             sys.stdout.buffer.flush()
-            status = (f'  \033[1;36mDoppler Radar\033[0m - \033[1;37m{area_name}\033[0m'
-                      f' | \033[1;33m{time_str}\033[0m'
-                      f' | \033[2mFrame {frame_idx+1}/{len(ansi_frames)}'
-                      f' | Press any key to exit\033[0m\r\n')
+            status = (f'  \033[1;36mRadar\033[0m \033[1;37m{area_name}\033[0m'
+                      f' \033[1;33m{time_str}\033[0m'
+                      f' \033[2m[any key to exit]\033[0m\r\n')
             sys.stdout.buffer.write(status.encode('latin-1'))
             sys.stdout.buffer.flush()
 
