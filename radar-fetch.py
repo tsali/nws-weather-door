@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
-"""Fetch weather radar for Pensacola area, composite onto OSM map tiles.
+"""Fetch weather radar, composite onto OSM map tiles.
 
 Supports single-frame (default) or multi-frame animation output.
-
-Usage:
-    radar-fetch.py [outpath]                    # single latest frame
-    radar-fetch.py --frames N [outdir]          # N most recent frames as separate PNGs
-    radar-fetch.py --lat LAT --lon LON [...]    # custom center location
 """
 
 import json
@@ -46,100 +41,34 @@ def fetch_tile(url):
 
 
 def build_base_map(center_lat, center_lon):
-    """Fetch and stitch OSM base map tiles (parallel fetch)."""
-    from concurrent.futures import ThreadPoolExecutor
+    """Fetch and stitch OSM base map tiles."""
     cx, cy = lat_lon_to_tile(center_lat, center_lon, ZOOM)
+    base_url = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
     tile_size = 256
     half = GRID // 2
     base = Image.new('RGB', (GRID * tile_size, GRID * tile_size), (170, 211, 223))
 
-    base_url = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-    tile_jobs = []
     for dy in range(-half, half + 1):
         for dx in range(-half, half + 1):
             tx, ty = cx + dx, cy + dy
             url = base_url.replace('{z}', str(ZOOM)).replace('{x}', str(tx)).replace('{y}', str(ty))
-            px = (dx + half) * tile_size
-            py = (dy + half) * tile_size
-            tile_jobs.append((url, px, py))
-
-    def fetch_and_pos(job):
-        url, px, py = job
-        tile = fetch_tile(url)
-        return (tile, px, py)
-
-    with ThreadPoolExecutor(max_workers=9) as pool:
-        results = list(pool.map(fetch_and_pos, tile_jobs))
-
-    for tile, px, py in results:
-        if tile:
-            tile = tile.convert('RGB')
-            base.paste(tile, (px, py))
+            tile = fetch_tile(url)
+            if tile:
+                tile = tile.convert('RGB')
+                px = (dx + half) * tile_size
+                py = (dy + half) * tile_size
+                base.paste(tile, (px, py))
 
     return base, cx, cy
 
 
-def lat_lon_to_pixel(lat, lon, cx, cy):
-    """Convert lat/lon to pixel position on the composite image (before resize)."""
-    tile_size = 256
-    half = GRID // 2
-    n = 2 ** ZOOM
-
-    # Exact tile coordinates (floating point)
-    x_tile = (lon + 180) / 360 * n
-    lat_rad = math.radians(lat)
-    y_tile = (1 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2 * n
-
-    # Pixel position relative to top-left of composite
-    px = (x_tile - (cx - half)) * tile_size
-    py = (y_tile - (cy - half)) * tile_size
-    return int(px), int(py)
-
-
-def draw_crosshair(img, target_lat, target_lon, cx, cy):
-    """Draw a yellow crosshair at the target location."""
-    from PIL import ImageDraw
-
-    # Get pixel position on the pre-resize composite
-    composite_w, composite_h = GRID * 256, GRID * 256
-    tx, ty = lat_lon_to_pixel(target_lat, target_lon, cx, cy)
-
-    # Scale to output dimensions
-    px = int(tx * OUT_W / composite_w)
-    py = int(ty * OUT_H / composite_h)
-
-    draw = ImageDraw.Draw(img)
-    color = (255, 255, 0)  # bright yellow
-    outline = (0, 0, 0)    # black outline for contrast
-    size = 40  # arm length
-    gap = 10   # gap around center
-
-    # Draw crosshair arms with black outline for visibility
-    for c, w in [(outline, 5), (color, 3)]:
-        # Horizontal arms
-        draw.line([(px - size, py), (px - gap, py)], fill=c, width=w)
-        draw.line([(px + gap, py), (px + size, py)], fill=c, width=w)
-        # Vertical arms
-        draw.line([(px, py - size), (px, py - gap)], fill=c, width=w)
-        draw.line([(px, py + gap), (px, py + size)], fill=c, width=w)
-
-    # Center dot with outline
-    draw.ellipse([(px - 5, py - 5), (px + 5, py + 5)], fill=outline)
-    draw.ellipse([(px - 3, py - 3), (px + 3, py + 3)], fill=color)
-
-    return img
-
-
 def overlay_radar(base_img, radar_path, cx, cy):
-    """Overlay radar tiles onto a copy of the base map (parallel fetch)."""
-    from concurrent.futures import ThreadPoolExecutor
+    """Overlay radar tiles onto a copy of the base map."""
     composite = base_img.copy()
     tile_size = 256
     half = GRID // 2
     radar_url = 'https://tilecache.rainviewer.com{path}/256/{z}/{x}/{y}/2/1_0.png'
 
-    # Build tile fetch list
-    tile_jobs = []
     for dy in range(-half, half + 1):
         for dx in range(-half, half + 1):
             tx, ty = cx + dx, cy + dy
@@ -148,36 +77,14 @@ def overlay_radar(base_img, radar_path, cx, cy):
                    .replace('{z}', str(ZOOM))
                    .replace('{x}', str(tx))
                    .replace('{y}', str(ty)))
-            px = (dx + half) * tile_size
-            py = (dy + half) * tile_size
-            tile_jobs.append((url, px, py))
-
-    # Fetch all tiles in parallel
-    def fetch_and_pos(job):
-        url, px, py = job
-        tile = fetch_tile(url)
-        return (tile, px, py)
-
-    with ThreadPoolExecutor(max_workers=9) as pool:
-        results = list(pool.map(fetch_and_pos, tile_jobs))
-
-    for tile, px, py in results:
-        if tile:
-            tile = tile.convert('RGBA')
-            composite.paste(tile, (px, py), tile)
+            tile = fetch_tile(url)
+            if tile:
+                tile = tile.convert('RGBA')
+                px = (dx + half) * tile_size
+                py = (dy + half) * tile_size
+                composite.paste(tile, (px, py), tile)  # alpha composite
 
     return composite.resize((OUT_W, OUT_H), Image.LANCZOS)
-
-
-def get_radar_timestamps():
-    """Get all available radar timestamps from RainViewer."""
-    try:
-        api_data = json.loads(urllib.request.urlopen(
-            'https://api.rainviewer.com/public/weather-maps.json', timeout=10
-        ).read())
-        return api_data['radar']['past']
-    except Exception:
-        return []
 
 
 def main():
@@ -194,25 +101,26 @@ def main():
     # Build base map (fetched once, reused for all frames)
     base, cx, cy = build_base_map(args.lat, args.lon)
 
-    timestamps = get_radar_timestamps()
+    # Get radar timestamps
+    try:
+        api_data = json.loads(urllib.request.urlopen(
+            'https://api.rainviewer.com/public/weather-maps.json', timeout=10
+        ).read())
+        timestamps = api_data['radar']['past']
+    except Exception:
+        timestamps = []
+
     if not timestamps:
-        # No radar data — output bare base map
         result = base.resize((OUT_W, OUT_H), Image.LANCZOS)
-        result.save(args.output if args.frames == 0 else os.path.join(args.output, 'frame_00.png'))
+        if args.frames > 0:
+            os.makedirs(args.output, exist_ok=True)
+            result.save(os.path.join(args.output, 'frame_00.png'))
+            print(f'0:0:{os.path.join(args.output, "frame_00.png")}')
+        else:
+            result.save(args.output)
         return
 
-    # Calculate target position in ANSI character grid (80x22)
-    tpx, tpy = lat_lon_to_pixel(args.lat, args.lon, cx, cy)
-    composite_w = GRID * 256
-    composite_h = GRID * 256
-    char_col = int(tpx * 80 / composite_w)
-    char_row = int(tpy * 22 / composite_h)
-    # Clamp to valid range
-    char_col = max(1, min(79, char_col))
-    char_row = max(1, min(21, char_row))
-
     if args.frames > 0:
-        # Multi-frame mode: generate N most recent frames
         frames = timestamps[-args.frames:]
         os.makedirs(args.output, exist_ok=True)
 
@@ -222,14 +130,11 @@ def main():
             composite = overlay_radar(base, radar_path, cx, cy)
             outfile = os.path.join(args.output, f'frame_{i:02d}.png')
             composite.save(outfile)
-            # Output metadata including crosshair position
-            print(f'{i}:{ts}:{outfile}:{char_row}:{char_col}')
+            print(f'{i}:{ts}:{outfile}')
     else:
-        # Single frame: latest only
         radar_path = timestamps[-1]['path']
         composite = overlay_radar(base, radar_path, cx, cy)
         composite.save(args.output)
-        print(f'0:0:{args.output}:{char_row}:{char_col}')
 
 
 if __name__ == '__main__':

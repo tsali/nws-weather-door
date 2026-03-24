@@ -1089,7 +1089,7 @@ def display_alerts_view():
 
 
 def render_frame_to_ansi(img_path):
-    """Render a PNG frame to ANSI bytes via chafa + iconv."""
+    """Render a PNG frame to ANSI bytes via chafa + iconv (original working pipeline)."""
     import subprocess
     try:
         chafa = subprocess.Popen(
@@ -1134,28 +1134,24 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
         outln(f'{RED}  Error: {e}{RST}')
         return
 
-    # Parse frame metadata from stdout (format: idx:ts:path:row:col)
+    # Parse frame metadata from stdout (format: idx:ts:path)
     frame_info = []
-    cross_row, cross_col = 0, 0
     for line in result.stdout.decode().strip().split('\n'):
-        if ':' in line:
-            parts = line.split(':')
-            if len(parts) >= 5:
-                idx, ts, path = parts[0], parts[1], parts[2]
-                cross_row, cross_col = int(parts[3]), int(parts[4])
-                frame_info.append((int(ts), path))
+        parts = line.split(':', 2)
+        if len(parts) == 3:
+            idx, ts, path = parts
+            frame_info.append((int(ts), path))
 
     if not frame_info:
         outln(f'{RED}  No radar frames available.{RST}')
         return
 
-    # Pre-render all frames to ANSI
+    # Pre-render all frames using exact same chafa+iconv pipeline
     outln(f'{DIM}  Rendering {len(frame_info)} frames...{RST}')
     ansi_frames = []
     for ts, path in frame_info:
         frame_data = render_frame_to_ansi(path)
         if frame_data:
-            from datetime import datetime
             dt = datetime.fromtimestamp(ts)
             time_str = dt.strftime('%I:%M %p')
             ansi_frames.append((time_str, frame_data))
@@ -1164,26 +1160,13 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
         outln(f'{RED}  Failed to render radar frames.{RST}')
         return
 
-    # Tiny crosshair: just a bright yellow "+" placed via cursor addressing
-    # No reset — preserves the background color from chafa underneath
-    def make_crosshair(row, col):
-        """Single bright yellow + character at position, no background change."""
-        if row < 1 or col < 1:
-            return b''
-        return f'\033[{row};{col}H\033[1;33m+'.encode('latin-1')
-
-    crosshair_bytes = make_crosshair(cross_row, cross_col)
-
     # Animate: loop until user presses a key
     import select
     import tty
     import termios
 
     CLEAR = '\033[2J\033[H'
-    HOME23 = '\033[23;1H'
-    RESET = '\033[0m'
 
-    # Set terminal to non-blocking raw mode so we can detect keypress
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     try:
@@ -1195,21 +1178,17 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
 
             sys.stdout.buffer.write(CLEAR.encode())
             sys.stdout.buffer.write(frame_data)
-            if crosshair_bytes:
-                sys.stdout.buffer.write(crosshair_bytes)
-            # Status bar + quit hint on line 23-24
-            sys.stdout.buffer.write(f'{HOME23}{RESET}'.encode())
             sys.stdout.buffer.flush()
-            status = (f'  \033[1;36mRadar\033[0m \033[1;37m{area_name}\033[0m'
+            # Status after radar image
+            status = (f'\r\n  \033[1;36mRadar\033[0m \033[1;37m{area_name}\033[0m'
                       f' \033[1;33m{time_str}\033[0m'
-                      f' \033[2m[any key to exit]\033[0m\r\n')
+                      f' \033[2m[any key to exit]\033[0m')
             sys.stdout.buffer.write(status.encode('latin-1'))
             sys.stdout.buffer.flush()
 
-            # Wait 0.8s or until keypress
             ready, _, _ = select.select([fd], [], [], 0.8)
             if ready:
-                os.read(fd, 1)  # consume the keypress
+                os.read(fd, 1)
                 break
 
             frame_idx = (frame_idx + 1) % len(ansi_frames)
@@ -1217,7 +1196,12 @@ def display_radar(area_lat=30.4213, area_lon=-87.2169, area_name='Pensacola'):
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
     # Clear and reset after radar
-    sys.stdout.buffer.write(f'\033[2J\033[H\033[0m'.encode())
+    sys.stdout.buffer.write(b'\033[2J\033[H\033[0m')
+    sys.stdout.buffer.flush()
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(frame_dir, ignore_errors=True)
     sys.stdout.buffer.flush()
 
     # Cleanup frame files
