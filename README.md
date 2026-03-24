@@ -199,12 +199,12 @@ nws-weather-door/
 ├── radar-fetch.py    # Doppler radar tile compositor (optional)
 ├── README.md         # This file
 ├── CHANGELOG.md      # Version history
-└── LICENSE           # MIT License
+└── LICENSE           # Non-commercial license
 ```
 
 ## License
 
-MIT License. Do whatever you want with it. See [LICENSE](LICENSE).
+Free for non-commercial use. Run it on your BBS, modify it, share it — just don't sell it. See [LICENSE](LICENSE) for full terms.
 
 ## Credits
 
