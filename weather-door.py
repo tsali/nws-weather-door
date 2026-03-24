@@ -1089,15 +1089,21 @@ def display_alerts_view():
 
 
 def render_frame_to_ansi(img_path):
-    """Render a PNG frame to ANSI bytes via chafa."""
+    """Render a PNG frame to ANSI bytes via chafa + iconv."""
     import subprocess
     try:
-        result = subprocess.run(
-            ['chafa', '--size=80x22', '--colors=240', '-f', 'symbols',
-             '--symbols=block+space', '--work=9', img_path],
-            capture_output=True, timeout=10
+        chafa = subprocess.Popen(
+            ['chafa', '--size=80x22', '--colors=256', '-f', 'symbols',
+             '--symbols=half+space', '--work=9', img_path],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
         )
-        return result.stdout if result.returncode == 0 else None
+        iconv = subprocess.Popen(
+            ['iconv', '-f', 'UTF-8', '-t', 'CP437//TRANSLIT'],
+            stdin=chafa.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        )
+        chafa.stdout.close()
+        output = iconv.communicate(timeout=10)[0]
+        return output
     except Exception:
         return None
 
